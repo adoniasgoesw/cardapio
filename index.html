@@ -1027,42 +1027,62 @@
 
             // Function to initialize location map
             function initLocationMap() {
-                // Default location (São Paulo, Brazil)
+                // Tile moderno (CartoDB Positron)
+                const modernTile = 'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png';
+                const modernAttrib = '&copy; <a href="https://carto.com/attributions">CARTO</a>';
+
+                // Default location (fallback)
                 const defaultLocation = [-23.5505, -46.6333];
                 
                 locationMap = L.map('location-map').setView(defaultLocation, 15);
-                
-                L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-                    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+                L.tileLayer(modernTile, {
+                    attribution: modernAttrib,
+                    maxZoom: 19
                 }).addTo(locationMap);
-                
+
                 // Add marker for selected location
                 locationMarker = L.marker(defaultLocation, {
                     draggable: true
                 }).addTo(locationMap);
-                
-                // Update address when marker is moved
+
+                // Atualiza endereço quando o marker é movido
                 locationMarker.on('dragend', function(e) {
                     const position = locationMarker.getLatLng();
                     reverseGeocode(position.lat, position.lng);
                 });
-                
-                // Update marker position when map is clicked
+
+                // Atualiza marker quando o mapa é clicado
                 locationMap.on('click', function(e) {
                     updateLocationMarker(e.latlng.lat, e.latlng.lng);
                     reverseGeocode(e.latlng.lat, e.latlng.lng);
                 });
-                
-                // Initialize geocoder
+
+                // Inicializa geocoder
                 initGeocoder();
-                
-                // Resize map after it's visible
+
+                // Tenta obter localização do usuário automaticamente
+                if (navigator.geolocation) {
+                    navigator.geolocation.getCurrentPosition(
+                        function(position) {
+                            const lat = position.coords.latitude;
+                            const lng = position.coords.longitude;
+                            updateLocationMarker(lat, lng);
+                            locationMap.setView([lat, lng], 16);
+                            reverseGeocode(lat, lng);
+                        },
+                        function(error) {
+                            // Se não conseguir, fica no fallback
+                            reverseGeocode(defaultLocation[0], defaultLocation[1]);
+                        }
+                    );
+                } else {
+                    reverseGeocode(defaultLocation[0], defaultLocation[1]);
+                }
+
+                // Resize map após exibir
                 setTimeout(() => {
                     locationMap.invalidateSize();
                 }, 300);
-                
-                // Initial reverse geocode
-                reverseGeocode(defaultLocation[0], defaultLocation[1]);
             }
 
             // Function to initialize geocoder
