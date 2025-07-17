@@ -772,12 +772,36 @@
                 
                 // Show notification
                 const notification = document.createElement('div');
-                notification.className = 'fixed bottom-4 left-1/2 transform -translate-x-1/2 bg-green-500 text-white px-4 py-2 rounded-full shadow-lg z-50';
+                notification.className = `fixed bottom-4 left-1/2 transform -translate-x-1/2 bg-green-500 text-white rounded-full shadow-lg z-50 flex items-center justify-center`;
                 notification.textContent = `${item.name} adicionado ao carrinho`;
+                // Responsividade: padding, fonte e largura
+                notification.style.padding = '0.5rem 1.25rem';
+                notification.style.fontSize = '1rem';
+                notification.style.maxWidth = '90vw';
+                notification.style.width = 'auto';
+                notification.style.textAlign = 'center';
+                notification.style.boxSizing = 'border-box';
+                notification.style.wordBreak = 'break-word';
+                notification.style.whiteSpace = 'pre-line';
+                notification.style.left = '50%';
+                notification.style.right = 'auto';
+                notification.style.transform = 'translateX(-50%)';
+                notification.style.margin = '0 auto';
+                notification.style.borderRadius = '9999px';
+                notification.style.display = 'flex';
+                notification.style.alignItems = 'center';
+                notification.style.justifyContent = 'center';
+                notification.style.boxShadow = '0 2px 12px rgba(0,0,0,0.15)';
+                notification.style.transition = 'all 0.2s';
+                // Mobile: menor fonte e padding
+                if (window.innerWidth <= 480) {
+                  notification.style.fontSize = '0.95rem';
+                  notification.style.padding = '0.5rem 0.75rem';
+                  notification.style.maxWidth = '95vw';
+                }
                 document.body.appendChild(notification);
-                
                 setTimeout(() => {
-                    notification.remove();
+                  notification.remove();
                 }, 2000);
             }
 
