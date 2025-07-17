@@ -1,0 +1,1597 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FoodExpress - Cardápio Digital</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/leaflet@1.7.1/dist/leaflet.js"></script>
+    <link href="https://cdn.jsdelivr.net/npm/leaflet@1.7.1/dist/leaflet.css" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Poppins', sans-serif;
+            background-color: #f8f9fa;
+        }
+        .menu-item {
+            transition: transform 0.3s ease;
+        }
+        .menu-item:hover {
+            transform: translateY(-5px);
+        }
+        .badge {
+            position: absolute;
+            top: -8px;
+            right: -8px;
+            background-color: #ff6b6b;
+            color: white;
+            border-radius: 50%;
+            width: 22px;
+            height: 22px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 12px;
+            font-weight: bold;
+        }
+        .map-container {
+            height: 300px;
+            width: 100%;
+            border-radius: 12px;
+            overflow: hidden;
+        }
+        .tab-active {
+            color: #ff6b6b;
+            border-bottom: 3px solid #ff6b6b;
+        }
+        .slide-in {
+            animation: slideIn 0.3s forwards;
+        }
+        @keyframes slideIn {
+            from {
+                transform: translateX(100%);
+                opacity: 0;
+            }
+            to {
+                transform: translateX(0);
+                opacity: 1;
+            }
+        }
+        .slide-out {
+            animation: slideOut 0.3s forwards;
+        }
+        @keyframes slideOut {
+            from {
+                transform: translateX(0);
+                opacity: 1;
+            }
+            to {
+                transform: translateX(100%);
+                opacity: 0;
+            }
+        }
+        .location-pulse {
+            height: 24px;
+            width: 24px;
+            background-color: #4285f4;
+            border-radius: 50%;
+            position: relative;
+            cursor: pointer;
+            box-shadow: 0 0 0 rgba(66, 133, 244, 0.4);
+            animation: pulse 2s infinite;
+        }
+        .location-pulse:after {
+            content: "";
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            height: 12px;
+            width: 12px;
+            background-color: white;
+            border-radius: 50%;
+        }
+        @keyframes pulse {
+            0% {
+                box-shadow: 0 0 0 0 rgba(66, 133, 244, 0.4);
+            }
+            70% {
+                box-shadow: 0 0 0 10px rgba(66, 133, 244, 0);
+            }
+            100% {
+                box-shadow: 0 0 0 0 rgba(66, 133, 244, 0);
+            }
+        }
+        .leaflet-control-attribution {
+            display: none;
+        }
+        .address-card {
+            transition: all 0.3s ease;
+        }
+        .address-card.selected {
+            border-color: #ff6b6b;
+            background-color: #fff5f5;
+        }
+    </style>
+</head>
+<body>
+    <div class="min-h-screen flex flex-col">
+        <!-- Header -->
+        <header class="bg-white shadow-md py-4 px-6 sticky top-0 z-30">
+            <div class="container mx-auto flex justify-between items-center">
+                <div class="flex items-center">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-8 w-8 text-rose-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
+                    </svg>
+                    <h1 class="text-2xl font-bold ml-2 text-gray-800">FoodExpress</h1>
+                </div>
+                <div class="relative">
+                    <button id="cart-button" class="p-2 bg-rose-500 text-white rounded-full hover:bg-rose-600 transition">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 11-4 0 2 2 0 014 0z" />
+                        </svg>
+                    </button>
+                    <div id="cart-badge" class="badge hidden">0</div>
+                </div>
+            </div>
+        </header>
+
+        <!-- Main Content -->
+        <main class="flex-grow container mx-auto px-4 py-6">
+            <!-- Tabs -->
+            <div class="flex overflow-x-auto pb-2 mb-6 no-scrollbar">
+                <button class="tab-button tab-active px-4 py-2 font-medium text-lg whitespace-nowrap" data-tab="menu">Cardápio</button>
+                <button class="tab-button px-4 py-2 font-medium text-lg text-gray-500 whitespace-nowrap" data-tab="orders">Meus Pedidos</button>
+            </div>
+
+            <!-- Menu Tab -->
+            <div id="menu-tab" class="tab-content">
+                <!-- Categories -->
+                <div class="flex overflow-x-auto space-x-4 pb-4 mb-6">
+                    <button class="category-btn bg-rose-500 text-white px-4 py-2 rounded-full whitespace-nowrap" data-category="all">Todos</button>
+                    <button class="category-btn bg-gray-200 text-gray-700 px-4 py-2 rounded-full whitespace-nowrap" data-category="burgers">Hambúrgueres</button>
+                    <button class="category-btn bg-gray-200 text-gray-700 px-4 py-2 rounded-full whitespace-nowrap" data-category="pizzas">Pizzas</button>
+                    <button class="category-btn bg-gray-200 text-gray-700 px-4 py-2 rounded-full whitespace-nowrap" data-category="drinks">Bebidas</button>
+                    <button class="category-btn bg-gray-200 text-gray-700 px-4 py-2 rounded-full whitespace-nowrap" data-category="desserts">Sobremesas</button>
+                </div>
+
+                <!-- Menu Items -->
+                <div id="menu-items" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                    <!-- Items will be populated by JavaScript -->
+                </div>
+            </div>
+
+            <!-- Orders Tab -->
+            <div id="orders-tab" class="tab-content hidden">
+                <div id="orders-list" class="space-y-4">
+                    <div class="text-center text-gray-500 py-10">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-16 w-16 mx-auto text-gray-300 mb-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+                        </svg>
+                        <p class="text-xl font-medium">Nenhum pedido realizado</p>
+                        <p class="mt-2">Seus pedidos aparecerão aqui após a finalização</p>
+                    </div>
+                </div>
+            </div>
+        </main>
+
+        <!-- Cart Sidebar -->
+        <div id="cart-sidebar" class="fixed top-0 right-0 h-full w-full md:w-96 bg-white shadow-lg z-40 transform translate-x-full transition-transform duration-300 ease-in-out">
+            <div class="h-full flex flex-col">
+                <div class="p-6 border-b">
+                    <div class="flex justify-between items-center">
+                        <h2 class="text-xl font-bold">Seu Carrinho</h2>
+                        <button id="close-cart" class="text-gray-500 hover:text-gray-700">
+                            <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+                            </svg>
+                        </button>
+                    </div>
+                </div>
+                
+                <div id="cart-items" class="flex-grow overflow-y-auto p-6">
+                    <!-- Cart items will be populated by JavaScript -->
+                    <div class="text-center text-gray-500 py-10">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-16 w-16 mx-auto text-gray-300 mb-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 11-4 0 2 2 0 014 0z" />
+                        </svg>
+                        <p class="text-xl font-medium">Seu carrinho está vazio</p>
+                        <p class="mt-2">Adicione itens do cardápio para começar</p>
+                    </div>
+                </div>
+                
+                <div class="p-6 border-t">
+                    <div class="flex justify-between mb-4">
+                        <span class="font-medium">Subtotal:</span>
+                        <span id="cart-subtotal" class="font-bold">R$ 0,00</span>
+                    </div>
+                    <button id="checkout-button" class="w-full bg-rose-500 text-white py-3 rounded-lg font-medium hover:bg-rose-600 transition disabled:opacity-50 disabled:cursor-not-allowed" disabled>
+                        Finalizar Pedido
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Checkout Modal -->
+        <div id="checkout-modal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 hidden">
+            <div class="bg-white rounded-lg w-full max-w-md mx-4 max-h-[90vh] overflow-y-auto">
+                <div class="p-6">
+                    <div class="flex justify-between items-center mb-6">
+                        <h2 class="text-xl font-bold">Finalizar Pedido</h2>
+                        <button id="close-checkout" class="text-gray-500 hover:text-gray-700">
+                            <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+                            </svg>
+                        </button>
+                    </div>
+                    
+                    <div class="space-y-4">
+                        <div>
+                            <label class="block text-gray-700 mb-2">Nome</label>
+                            <input type="text" id="customer-name" class="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-rose-500" placeholder="Seu nome">
+                        </div>
+                        
+                        <div>
+                            <label class="block text-gray-700 mb-2">Telefone</label>
+                            <input type="tel" id="customer-phone" class="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-rose-500" placeholder="(00) 00000-0000">
+                        </div>
+                        
+                        <div class="flex items-center space-x-2 my-4">
+                            <hr class="flex-grow border-gray-200">
+                            <span class="text-gray-500">Forma de entrega</span>
+                            <hr class="flex-grow border-gray-200">
+                        </div>
+                        
+                        <div class="flex space-x-4">
+                            <button id="pickup-option" class="flex-1 py-3 border-2 border-rose-500 text-rose-500 rounded-lg font-medium hover:bg-rose-50 transition">Retirada</button>
+                            <button id="delivery-option" class="flex-1 py-3 border-2 border-gray-300 text-gray-700 rounded-lg font-medium hover:bg-gray-50 transition">Entrega</button>
+                        </div>
+                        
+                        <div id="delivery-details" class="hidden space-y-4 mt-4">
+                            <button id="open-location-modal" class="w-full py-3 bg-blue-500 text-white rounded-lg font-medium hover:bg-blue-600 transition flex items-center justify-center">
+                                <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
+                                </svg>
+                                Selecionar endereço de entrega
+                            </button>
+                            
+                            <div id="selected-address-container" class="hidden">
+                                <label class="block text-gray-700 mb-2">Endereço selecionado</label>
+                                <div class="bg-gray-50 p-3 rounded-lg border border-gray-200">
+                                    <div id="selected-address-text" class="font-medium"></div>
+                                    <div id="selected-address-details" class="text-sm text-gray-500 mt-1"></div>
+                                </div>
+                                <button id="change-address" class="mt-2 text-blue-500 text-sm font-medium hover:text-blue-700">
+                                    Alterar endereço
+                                </button>
+                            </div>
+                            
+                            <div>
+                                <label class="block text-gray-700 mb-2">Complemento</label>
+                                <input type="text" id="address-complement" class="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-rose-500" placeholder="Apto, bloco, casa, etc.">
+                            </div>
+                            
+                            <div>
+                                <label class="block text-gray-700 mb-2">Referência</label>
+                                <input type="text" id="delivery-reference" class="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-rose-500" placeholder="Ponto de referência">
+                            </div>
+                        </div>
+                        
+                        <div class="flex items-center space-x-2 my-4">
+                            <hr class="flex-grow border-gray-200">
+                            <span class="text-gray-500">Forma de pagamento</span>
+                            <hr class="flex-grow border-gray-200">
+                        </div>
+                        
+                        <div class="space-y-2">
+                            <label class="flex items-center space-x-3">
+                                <input type="radio" name="payment" value="cash" class="h-5 w-5 text-rose-500" checked>
+                                <span>Dinheiro</span>
+                            </label>
+                            <label class="flex items-center space-x-3">
+                                <input type="radio" name="payment" value="card" class="h-5 w-5 text-rose-500">
+                                <span>Cartão na entrega</span>
+                            </label>
+                            <label class="flex items-center space-x-3">
+                                <input type="radio" name="payment" value="pix" class="h-5 w-5 text-rose-500">
+                                <span>PIX</span>
+                            </label>
+                        </div>
+                        
+                        <div id="change-container" class="mt-4">
+                            <label class="block text-gray-700 mb-2">Troco para</label>
+                            <input type="text" id="change-amount" class="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-rose-500" placeholder="R$ 0,00">
+                        </div>
+                    </div>
+                    
+                    <div class="mt-6 pt-6 border-t">
+                        <div class="flex justify-between mb-2">
+                            <span>Subtotal:</span>
+                            <span id="checkout-subtotal">R$ 0,00</span>
+                        </div>
+                        <div class="flex justify-between mb-2" id="delivery-fee-container">
+                            <span>Taxa de entrega:</span>
+                            <span id="delivery-fee">R$ 0,00</span>
+                        </div>
+                        <div class="flex justify-between font-bold text-lg">
+                            <span>Total:</span>
+                            <span id="checkout-total">R$ 0,00</span>
+                        </div>
+                        
+                        <button id="place-order-button" class="w-full mt-4 bg-rose-500 text-white py-3 rounded-lg font-medium hover:bg-rose-600 transition">
+                            Confirmar Pedido
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Location Modal -->
+        <div id="location-modal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 hidden">
+            <div class="bg-white rounded-lg w-full max-w-md mx-4 h-[90vh] flex flex-col">
+                <div class="p-4 border-b flex justify-between items-center">
+                    <h2 class="text-lg font-bold">Selecionar endereço</h2>
+                    <button id="close-location" class="text-gray-500 hover:text-gray-700">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+                        </svg>
+                    </button>
+                </div>
+                
+                <div class="relative flex-grow">
+                    <div id="location-map" class="w-full h-full"></div>
+                    <div class="absolute top-4 left-0 right-0 px-4">
+                        <div class="bg-white rounded-lg shadow-lg p-2 flex items-center">
+                            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-gray-400 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                            </svg>
+                            <input type="text" id="location-search" class="w-full outline-none text-sm" placeholder="Buscar endereço...">
+                        </div>
+                    </div>
+                    <div class="absolute bottom-4 right-4">
+                        <button id="current-location" class="bg-white rounded-full w-12 h-12 shadow-lg flex items-center justify-center hover:bg-gray-100">
+                            <div class="location-pulse"></div>
+                        </button>
+                    </div>
+                    <div class="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 pointer-events-none">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-8 w-8 text-rose-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
+                        </svg>
+                    </div>
+                </div>
+                
+                <div class="p-4 border-t">
+                    <div class="mb-4">
+                        <h3 class="font-medium mb-2">Endereço selecionado</h3>
+                        <div id="location-address" class="text-gray-700"></div>
+                    </div>
+                    <button id="confirm-location" class="w-full bg-rose-500 text-white py-3 rounded-lg font-medium hover:bg-rose-600 transition">
+                        Confirmar endereço
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Saved Addresses Modal -->
+        <div id="saved-addresses-modal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 hidden">
+            <div class="bg-white rounded-lg w-full max-w-md mx-4 max-h-[90vh] overflow-y-auto">
+                <div class="p-4 border-b flex justify-between items-center">
+                    <h2 class="text-lg font-bold">Endereços salvos</h2>
+                    <button id="close-saved-addresses" class="text-gray-500 hover:text-gray-700">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+                        </svg>
+                    </button>
+                </div>
+                
+                <div class="p-4">
+                    <div id="saved-addresses-list" class="space-y-3">
+                        <!-- Saved addresses will be populated by JavaScript -->
+                    </div>
+                    
+                    <button id="add-new-address" class="w-full mt-4 py-3 border-2 border-dashed border-gray-300 rounded-lg text-gray-500 hover:bg-gray-50 transition flex items-center justify-center">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
+                        </svg>
+                        Adicionar novo endereço
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Order Confirmation Modal -->
+        <div id="confirmation-modal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 hidden">
+            <div class="bg-white rounded-lg w-full max-w-md mx-4 p-6 text-center">
+                <div class="w-20 h-20 mx-auto bg-green-100 rounded-full flex items-center justify-center mb-6">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-10 w-10 text-green-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
+                    </svg>
+                </div>
+                <h2 class="text-2xl font-bold mb-2">Pedido Confirmado!</h2>
+                <p class="text-gray-600 mb-6">Seu pedido foi recebido e está sendo preparado.</p>
+                <div class="bg-gray-50 rounded-lg p-4 mb-6">
+                    <div class="flex justify-between mb-2">
+                        <span class="font-medium">Número do pedido:</span>
+                        <span id="order-number" class="font-bold"></span>
+                    </div>
+                    <div class="flex justify-between">
+                        <span class="font-medium">Tempo estimado:</span>
+                        <span class="font-bold">30-45 minutos</span>
+                    </div>
+                </div>
+                <button id="close-confirmation" class="w-full bg-rose-500 text-white py-3 rounded-lg font-medium hover:bg-rose-600 transition">
+                    Voltar ao Cardápio
+                </button>
+            </div>
+        </div>
+
+        <!-- Order Tracking Modal -->
+        <div id="tracking-modal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 hidden">
+            <div class="bg-white rounded-lg w-full max-w-md mx-4 p-6">
+                <div class="flex justify-between items-center mb-6">
+                    <h2 class="text-xl font-bold">Acompanhar Pedido</h2>
+                    <button id="close-tracking" class="text-gray-500 hover:text-gray-700">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+                        </svg>
+                    </button>
+                </div>
+                
+                <div class="mb-6">
+                    <div class="flex justify-between mb-2">
+                        <span class="font-medium">Pedido:</span>
+                        <span id="tracking-order-number" class="font-bold"></span>
+                    </div>
+                    <div class="flex justify-between mb-2">
+                        <span class="font-medium">Status:</span>
+                        <span id="tracking-status" class="font-bold text-yellow-600"></span>
+                    </div>
+                    <div class="flex justify-between">
+                        <span class="font-medium">Tempo estimado:</span>
+                        <span id="tracking-eta" class="font-bold"></span>
+                    </div>
+                </div>
+                
+                <div class="relative mb-6">
+                    <div class="absolute left-5 inset-y-0 w-0.5 bg-gray-200"></div>
+                    
+                    <div class="relative flex items-center mb-6">
+                        <div class="flex-shrink-0 h-10 w-10 rounded-full bg-green-500 flex items-center justify-center z-10">
+                            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
+                            </svg>
+                        </div>
+                        <div class="ml-4">
+                            <h3 class="font-medium">Pedido recebido</h3>
+                            <p class="text-sm text-gray-500" id="tracking-received-time"></p>
+                        </div>
+                    </div>
+                    
+                    <div class="relative flex items-center mb-6" id="tracking-preparing-step">
+                        <div class="flex-shrink-0 h-10 w-10 rounded-full bg-gray-200 flex items-center justify-center z-10" id="tracking-preparing-icon">
+                            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
+                            </svg>
+                        </div>
+                        <div class="ml-4">
+                            <h3 class="font-medium text-gray-500" id="tracking-preparing-text">Preparando seu pedido</h3>
+                            <p class="text-sm text-gray-500" id="tracking-preparing-time"></p>
+                        </div>
+                    </div>
+                    
+                    <div class="relative flex items-center mb-6" id="tracking-delivery-step">
+                        <div class="flex-shrink-0 h-10 w-10 rounded-full bg-gray-200 flex items-center justify-center z-10" id="tracking-delivery-icon">
+                            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path d="M9 17a2 2 0 11-4 0 2 2 0 014 0zM19 17a2 2 0 11-4 0 2 2 0 014 0z" />
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16V6a1 1 0 00-1-1H4a1 1 0 00-1 1v10a1 1 0 001 1h1m8-1a1 1 0 01-1 1H9m4-1V8a1 1 0 011-1h2.586a1 1 0 01.707.293l3.414 3.414a1 1 0 01.293.707V16a1 1 0 01-1 1h-1m-6-1a1 1 0 001 1h1M5 17a2 2 0 104 0m-4 0a2 2 0 114 0m6 0a2 2 0 104 0m-4 0a2 2 0 114 0" />
+                            </svg>
+                        </div>
+                        <div class="ml-4">
+                            <h3 class="font-medium text-gray-500" id="tracking-delivery-text">A caminho</h3>
+                            <p class="text-sm text-gray-500" id="tracking-delivery-time"></p>
+                        </div>
+                    </div>
+                    
+                    <div class="relative flex items-center" id="tracking-completed-step">
+                        <div class="flex-shrink-0 h-10 w-10 rounded-full bg-gray-200 flex items-center justify-center z-10" id="tracking-completed-icon">
+                            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
+                            </svg>
+                        </div>
+                        <div class="ml-4">
+                            <h3 class="font-medium text-gray-500" id="tracking-completed-text">Entregue</h3>
+                            <p class="text-sm text-gray-500" id="tracking-completed-time"></p>
+                        </div>
+                    </div>
+                </div>
+                
+                <div id="tracking-map-container" class="map-container mb-6 hidden"></div>
+                
+                <button id="close-tracking-button" class="w-full bg-rose-500 text-white py-3 rounded-lg font-medium hover:bg-rose-600 transition">
+                    Fechar
+                </button>
+            </div>
+        </div>
+
+        <!-- Overlay -->
+        <div id="overlay" class="fixed inset-0 bg-black opacity-50 z-30 hidden"></div>
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            // Menu data
+            const menuItems = [
+                {
+                    id: 1,
+                    name: 'Hambúrguer Clássico',
+                    description: 'Pão, hambúrguer 180g, queijo, alface, tomate e molho especial',
+                    price: 25.90,
+                    category: 'burgers',
+                    image: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" class="h-32 w-32 mx-auto"><path fill="#FFA000" d="M437 268.5H75c-11 0-20-9-20-20v-17c0-11 9-20 20-20h362c11 0 20 9 20 20v17c0 11-9 20-20 20z"/><path fill="#6D4C41" d="M437 333.5H75c-11 0-20-9-20-20v-17c0-11 9-20 20-20h362c11 0 20 9 20 20v17c0 11-9 20-20 20z"/><path fill="#FFA000" d="M437 398.5H75c-11 0-20-9-20-20v-17c0-11 9-20 20-20h362c11 0 20 9 20 20v17c0 11-9 20-20 20z"/><path fill="#8D6E63" d="M75 150.5h362c11 0 20 9 20 20v17c0 11-9 20-20 20H75c-11 0-20-9-20-20v-17c0-11 9-20 20-20z"/><path fill="#4CAF50" d="M437 150.5H75c-11 0-20-9-20-20v-17c0-11 9-20 20-20h362c11 0 20 9 20 20v17c0 11-9 20-20 20z"/><path fill="#FF5722" d="M407 268.5c0 11-9 20-20 20H125c-11 0-20-9-20-20 0-11 9-20 20-20h262c11 0 20 9 20 20z"/><path fill="#FFC107" d="M407 333.5c0 11-9 20-20 20H125c-11 0-20-9-20-20 0-11 9-20 20-20h262c11 0 20 9 20 20z"/></svg>`
+                },
+                {
+                    id: 2,
+                    name: 'Hambúrguer Duplo Bacon',
+                    description: 'Pão, 2 hambúrgueres 180g, queijo cheddar, bacon crocante e molho barbecue',
+                    price: 32.90,
+                    category: 'burgers',
+                    image: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" class="h-32 w-32 mx-auto"><path fill="#FFA000" d="M437 268.5H75c-11 0-20-9-20-20v-17c0-11 9-20 20-20h362c11 0 20 9 20 20v17c0 11-9 20-20 20z"/><path fill="#6D4C41" d="M437 333.5H75c-11 0-20-9-20-20v-17c0-11 9-20 20-20h362c11 0 20 9 20 20v17c0 11-9 20-20 20z"/><path fill="#6D4C41" d="M437 303.5H75c-11 0-20-9-20-20v-17c0-11 9-20 20-20h362c11 0 20 9 20 20v17c0 11-9 20-20 20z"/><path fill="#FFA000" d="M437 398.5H75c-11 0-20-9-20-20v-17c0-11 9-20 20-20h362c11 0 20 9 20 20v17c0 11-9 20-20 20z"/><path fill="#8D6E63" d="M75 150.5h362c11 0 20 9 20 20v17c0 11-9 20-20 20H75c-11 0-20-9-20-20v-17c0-11 9-20 20-20z"/><path fill="#4CAF50" d="M437 150.5H75c-11 0-20-9-20-20v-17c0-11 9-20 20-20h362c11 0 20 9 20 20v17c0 11-9 20-20 20z"/><path fill="#FF5722" d="M407 268.5c0 11-9 20-20 20H125c-11 0-20-9-20-20 0-11 9-20 20-20h262c11 0 20 9 20 20z"/><path fill="#D84315" d="M407 303.5c0 11-9 20-20 20H125c-11 0-20-9-20-20 0-11 9-20 20-20h262c11 0 20 9 20 20z"/><path fill="#FFC107" d="M407 333.5c0 11-9 20-20 20H125c-11 0-20-9-20-20 0-11 9-20 20-20h262c11 0 20 9 20 20z"/></svg>`
+                },
+                {
+                    id: 3,
+                    name: 'Pizza Margherita',
+                    description: 'Molho de tomate, mussarela, tomate e manjericão fresco',
+                    price: 45.90,
+                    category: 'pizzas',
+                    image: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" class="h-32 w-32 mx-auto"><circle cx="256" cy="256" r="200" fill="#FFC107"/><circle cx="256" cy="256" r="180" fill="#FF5722"/><circle cx="256" cy="256" r="160" fill="#FFF59D"/><circle cx="176" cy="176" r="20" fill="#F44336"/><circle cx="336" cy="176" r="20" fill="#F44336"/><circle cx="256" cy="336" r="20" fill="#F44336"/><circle cx="176" cy="256" r="20" fill="#F44336"/><circle cx="336" cy="256" r="20" fill="#F44336"/><circle cx="216" cy="216" r="15" fill="#4CAF50"/><circle cx="296" cy="216" r="15" fill="#4CAF50"/><circle cx="256" cy="276" r="15" fill="#4CAF50"/></svg>`
+                },
+                {
+                    id: 4,
+                    name: 'Pizza Pepperoni',
+                    description: 'Molho de tomate, mussarela e pepperoni',
+                    price: 49.90,
+                    category: 'pizzas',
+                    image: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" class="h-32 w-32 mx-auto"><circle cx="256" cy="256" r="200" fill="#FFC107"/><circle cx="256" cy="256" r="180" fill="#FF5722"/><circle cx="256" cy="256" r="160" fill="#FFF59D"/><circle cx="176" cy="176" r="20" fill="#D32F2F"/><circle cx="336" cy="176" r="20" fill="#D32F2F"/><circle cx="256" cy="336" r="20" fill="#D32F2F"/><circle cx="176" cy="256" r="20" fill="#D32F2F"/><circle cx="336" cy="256" r="20" fill="#D32F2F"/><circle cx="216" cy="216" r="20" fill="#D32F2F"/><circle cx="296" cy="216" r="20" fill="#D32F2F"/><circle cx="256" cy="276" r="20" fill="#D32F2F"/><circle cx="216" cy="296" r="20" fill="#D32F2F"/><circle cx="296" cy="296" r="20" fill="#D32F2F"/></svg>`
+                },
+                {
+                    id: 5,
+                    name: 'Refrigerante Cola',
+                    description: 'Lata 350ml',
+                    price: 6.90,
+                    category: 'drinks',
+                    image: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" class="h-32 w-32 mx-auto"><path fill="#D32F2F" d="M320 80v352c0 17.7-14.3 32-32 32h-64c-17.7 0-32-14.3-32-32V80c0-17.7 14.3-32 32-32h64c17.7 0 32 14.3 32 32z"/><path fill="#B71C1C" d="M320 80v32H192V80c0-17.7 14.3-32 32-32h64c17.7 0 32 14.3 32 32z"/><path fill="#B71C1C" d="M320 400v32c0 17.7-14.3 32-32 32h-64c-17.7 0-32-14.3-32-32v-32h128z"/><path fill="#FFFFFF" d="M290 150c-10.5 0-19 8.5-19 19s8.5 19 19 19 19-8.5 19-19-8.5-19-19-19zm-68 0c-10.5 0-19 8.5-19 19s8.5 19 19 19 19-8.5 19-19-8.5-19-19-19z"/><path fill="#FFFFFF" d="M256 220c-22.1 0-40 17.9-40 40s17.9 40 40 40 40-17.9 40-40-17.9-40-40-40z"/></svg>`
+                },
+                {
+                    id: 6,
+                    name: 'Suco Natural',
+                    description: 'Laranja, abacaxi ou maracujá - 500ml',
+                    price: 9.90,
+                    category: 'drinks',
+                    image: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" class="h-32 w-32 mx-auto"><path fill="#FFA000" d="M320 120v312c0 17.7-14.3 32-32 32h-64c-17.7 0-32-14.3-32-32V120c0-17.7 14.3-32 32-32h64c17.7 0 32 14.3 32 32z"/><path fill="#FF6F00" d="M320 120v32H192v-32c0-17.7 14.3-32 32-32h64c17.7 0 32 14.3 32 32z"/><path fill="#FFD54F" d="M256 140c-55.2 0-100 44.8-100 100v160c0 55.2 44.8 100 100 100s100-44.8 100-100V240c0-55.2-44.8-100-100-100z"/><path fill="#FFECB3" d="M256 160c-44.2 0-80 35.8-80 80v160c0 44.2 35.8 80 80 80s80-35.8 80-80V240c0-44.2-35.8-80-80-80z"/><path fill="#FFC107" d="M296 200c-5.5 0-10 4.5-10 10s4.5 10 10 10 10-4.5 10-10-4.5-10-10-10zm-80 0c-5.5 0-10 4.5-10 10s4.5 10 10 10 10-4.5 10-10-4.5-10-10-10zm40 40c-5.5 0-10 4.5-10 10s4.5 10 10 10 10-4.5 10-10-4.5-10-10-10zm-40 40c-5.5 0-10 4.5-10 10s4.5 10 10 10 10-4.5 10-10-4.5-10-10-10zm80 0c-5.5 0-10 4.5-10 10s4.5 10 10 10 10-4.5 10-10-4.5-10-10-10z"/></svg>`
+                },
+                {
+                    id: 7,
+                    name: 'Sorvete de Chocolate',
+                    description: 'Com calda quente e castanhas',
+                    price: 15.90,
+                    category: 'desserts',
+                    image: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" class="h-32 w-32 mx-auto"><path fill="#795548" d="M352 160v192c0 53-43 96-96 96s-96-43-96-96V160c0-53 43-96 96-96s96 43 96 96z"/><path fill="#5D4037" d="M352 160v32c0 53-43 96-96 96s-96-43-96-96v-32c0 53 43 96 96 96s96-43 96-96z"/><path fill="#5D4037" d="M352 240v32c0 53-43 96-96 96s-96-43-96-96v-32c0 53 43 96 96 96s96-43 96-96z"/><path fill="#4E342E" d="M352 320v32c0 53-43 96-96 96s-96-43-96-96v-32c0 53 43 96 96 96s96-43 96-96z"/><path fill="#8D6E63" d="M308 160c-5.5 0-10 4.5-10 10s4.5 10 10 10 10-4.5 10-10-4.5-10-10-10zm-104 0c-5.5 0-10 4.5-10 10s4.5 10 10 10 10-4.5 10-10-4.5-10-10-10zm52 40c-5.5 0-10 4.5-10 10s4.5 10 10 10 10-4.5 10-10-4.5-10-10-10z"/></svg>`
+                },
+                {
+                    id: 8,
+                    name: 'Pudim de Leite',
+                    description: 'Tradicional pudim com calda de caramelo',
+                    price: 12.90,
+                    category: 'desserts',
+                    image: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" class="h-32 w-32 mx-auto"><path fill="#FFB74D" d="M352 256c0 53-43 96-96 96s-96-43-96-96 43-96 96-96 96 43 96 96z"/><path fill="#FFA726" d="M352 256c0 53-43 96-96 96s-96-43-96-96 43-96 96-96 96 43 96 96zm-96-64c-35.3 0-64 28.7-64 64s28.7 64 64 64 64-28.7 64-64-28.7-64-64-64z"/><path fill="#FF9800" d="M256 224c-17.7 0-32 14.3-32 32s14.3 32 32 32 32-14.3 32-32-14.3-32-32-32z"/><path fill="#E65100" d="M320 352c0 35.3-28.7 64-64 64s-64-28.7-64-64h128z"/></svg>`
+                }
+            ];
+
+            // Sample saved addresses
+            const savedAddresses = [
+                {
+                    id: 1,
+                    name: 'Casa',
+                    address: 'Rua das Flores, 123 - Jardim Primavera',
+                    details: 'Apto 101, Bloco A',
+                    lat: -23.5505,
+                    lng: -46.6333
+                },
+                {
+                    id: 2,
+                    name: 'Trabalho',
+                    address: 'Av. Paulista, 1000 - Bela Vista',
+                    details: 'Sala 1010, 10º andar',
+                    lat: -23.5630,
+                    lng: -46.6543
+                }
+            ];
+
+            let cart = [];
+            let orders = [];
+            let currentCategory = 'all';
+            let locationMap = null;
+            let trackingMap = null;
+            let locationMarker = null;
+            let deliveryOption = 'pickup';
+            let deliveryFee = 5.00;
+            let selectedAddress = null;
+            let geocoder = null;
+
+            // Initialize the menu
+            displayMenuItems();
+
+            // Event listeners for tabs
+            document.querySelectorAll('.tab-button').forEach(button => {
+                button.addEventListener('click', function() {
+                    const tab = this.dataset.tab;
+                    document.querySelectorAll('.tab-button').forEach(btn => {
+                        btn.classList.remove('tab-active');
+                        btn.classList.add('text-gray-500');
+                    });
+                    this.classList.add('tab-active');
+                    this.classList.remove('text-gray-500');
+                    
+                    document.querySelectorAll('.tab-content').forEach(content => {
+                        content.classList.add('hidden');
+                    });
+                    document.getElementById(`${tab}-tab`).classList.remove('hidden');
+                });
+            });
+
+            // Event listeners for category buttons
+            document.querySelectorAll('.category-btn').forEach(button => {
+                button.addEventListener('click', function() {
+                    const category = this.dataset.category;
+                    currentCategory = category;
+                    
+                    document.querySelectorAll('.category-btn').forEach(btn => {
+                        btn.classList.remove('bg-rose-500', 'text-white');
+                        btn.classList.add('bg-gray-200', 'text-gray-700');
+                    });
+                    this.classList.remove('bg-gray-200', 'text-gray-700');
+                    this.classList.add('bg-rose-500', 'text-white');
+                    
+                    displayMenuItems();
+                });
+            });
+
+            // Cart button event listener
+            document.getElementById('cart-button').addEventListener('click', toggleCart);
+            document.getElementById('close-cart').addEventListener('click', toggleCart);
+            document.getElementById('overlay').addEventListener('click', closeAllModals);
+
+            // Checkout button event listener
+            document.getElementById('checkout-button').addEventListener('click', openCheckout);
+            document.getElementById('close-checkout').addEventListener('click', closeCheckout);
+
+            // Delivery option event listeners
+            document.getElementById('pickup-option').addEventListener('click', function() {
+                setDeliveryOption('pickup');
+            });
+            document.getElementById('delivery-option').addEventListener('click', function() {
+                setDeliveryOption('delivery');
+            });
+
+            // Payment method event listeners
+            document.querySelectorAll('input[name="payment"]').forEach(input => {
+                input.addEventListener('change', function() {
+                    const changeContainer = document.getElementById('change-container');
+                    if (this.value === 'cash') {
+                        changeContainer.classList.remove('hidden');
+                    } else {
+                        changeContainer.classList.add('hidden');
+                    }
+                });
+            });
+
+            // Place order button event listener
+            document.getElementById('place-order-button').addEventListener('click', placeOrder);
+
+            // Close confirmation modal event listener
+            document.getElementById('close-confirmation').addEventListener('click', closeConfirmation);
+
+            // Location modal event listeners
+            document.getElementById('open-location-modal').addEventListener('click', openLocationModal);
+            document.getElementById('close-location').addEventListener('click', closeLocationModal);
+            document.getElementById('current-location').addEventListener('click', getUserLocation);
+            document.getElementById('confirm-location').addEventListener('click', confirmLocation);
+
+            // Change address event listener
+            document.getElementById('change-address').addEventListener('click', openLocationModal);
+
+            // Saved addresses modal event listeners
+            document.getElementById('close-saved-addresses').addEventListener('click', closeSavedAddressesModal);
+            document.getElementById('add-new-address').addEventListener('click', function() {
+                closeSavedAddressesModal();
+                openLocationModal();
+            });
+
+            // Tracking modal event listeners
+            document.getElementById('close-tracking').addEventListener('click', closeTrackingModal);
+            document.getElementById('close-tracking-button').addEventListener('click', closeTrackingModal);
+
+            // Function to display menu items based on selected category
+            function displayMenuItems() {
+                const menuContainer = document.getElementById('menu-items');
+                menuContainer.innerHTML = '';
+                
+                const filteredItems = currentCategory === 'all' 
+                    ? menuItems 
+                    : menuItems.filter(item => item.category === currentCategory);
+                
+                filteredItems.forEach(item => {
+                    const itemElement = document.createElement('div');
+                    itemElement.className = 'menu-item bg-white rounded-xl shadow-md overflow-hidden';
+                    itemElement.innerHTML = `
+                        <div class="p-4">
+                            <div class="flex flex-col items-center mb-4">
+                                ${item.image}
+                            </div>
+                            <h3 class="text-lg font-bold mb-1">${item.name}</h3>
+                            <p class="text-gray-600 text-sm mb-3">${item.description}</p>
+                            <div class="flex justify-between items-center">
+                                <span class="text-rose-500 font-bold">R$ ${item.price.toFixed(2)}</span>
+                                <button class="add-to-cart-btn bg-rose-500 text-white px-3 py-1 rounded-full text-sm font-medium hover:bg-rose-600 transition" data-id="${item.id}">
+                                    Adicionar
+                                </button>
+                            </div>
+                        </div>
+                    `;
+                    menuContainer.appendChild(itemElement);
+                });
+                
+                // Add event listeners to add-to-cart buttons
+                document.querySelectorAll('.add-to-cart-btn').forEach(button => {
+                    button.addEventListener('click', function() {
+                        const itemId = parseInt(this.dataset.id);
+                        addToCart(itemId);
+                    });
+                });
+            }
+
+            // Function to add item to cart
+            function addToCart(itemId) {
+                const item = menuItems.find(item => item.id === itemId);
+                
+                // Check if item is already in cart
+                const existingItem = cart.find(cartItem => cartItem.id === itemId);
+                
+                if (existingItem) {
+                    existingItem.quantity += 1;
+                } else {
+                    cart.push({
+                        ...item,
+                        quantity: 1
+                    });
+                }
+                
+                updateCart();
+                
+                // Show notification
+                const notification = document.createElement('div');
+                notification.className = 'fixed bottom-4 left-1/2 transform -translate-x-1/2 bg-green-500 text-white px-4 py-2 rounded-full shadow-lg z-50';
+                notification.textContent = `${item.name} adicionado ao carrinho`;
+                document.body.appendChild(notification);
+                
+                setTimeout(() => {
+                    notification.remove();
+                }, 2000);
+            }
+
+            // Function to update cart
+            function updateCart() {
+                const cartItemsContainer = document.getElementById('cart-items');
+                const cartBadge = document.getElementById('cart-badge');
+                const checkoutButton = document.getElementById('checkout-button');
+                
+                // Update cart badge
+                const totalItems = cart.reduce((total, item) => total + item.quantity, 0);
+                if (totalItems > 0) {
+                    cartBadge.textContent = totalItems;
+                    cartBadge.classList.remove('hidden');
+                    checkoutButton.disabled = false;
+                } else {
+                    cartBadge.classList.add('hidden');
+                    checkoutButton.disabled = true;
+                }
+                
+                // Update cart items
+                if (cart.length === 0) {
+                    cartItemsContainer.innerHTML = `
+                        <div class="text-center text-gray-500 py-10">
+                            <svg xmlns="http://www.w3.org/2000/svg" class="h-16 w-16 mx-auto text-gray-300 mb-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 11-4 0 2 2 0 014 0z" />
+                            </svg>
+                            <p class="text-xl font-medium">Seu carrinho está vazio</p>
+                            <p class="mt-2">Adicione itens do cardápio para começar</p>
+                        </div>
+                    `;
+                } else {
+                    cartItemsContainer.innerHTML = `
+                        <div class="space-y-4">
+                            ${cart.map(item => `
+                                <div class="flex items-center justify-between">
+                                    <div class="flex items-center">
+                                        <div class="flex-shrink-0 w-16 h-16 bg-gray-100 rounded-lg flex items-center justify-center">
+                                            ${item.image.replace('h-32 w-32', 'h-10 w-10')}
+                                        </div>
+                                        <div class="ml-4">
+                                            <h4 class="text-sm font-medium">${item.name}</h4>
+                                            <p class="text-sm text-gray-500">R$ ${item.price.toFixed(2)}</p>
+                                        </div>
+                                    </div>
+                                    <div class="flex items-center">
+                                        <button class="cart-decrease-btn text-gray-500 hover:text-gray-700" data-id="${item.id}">
+                                            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M18 12H6" />
+                                            </svg>
+                                        </button>
+                                        <span class="mx-2 w-6 text-center">${item.quantity}</span>
+                                        <button class="cart-increase-btn text-gray-500 hover:text-gray-700" data-id="${item.id}">
+                                            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
+                                            </svg>
+                                        </button>
+                                        <button class="cart-remove-btn ml-4 text-red-500 hover:text-red-700" data-id="${item.id}">
+                                            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                                            </svg>
+                                        </button>
+                                    </div>
+                                </div>
+                            `).join('')}
+                        </div>
+                    `;
+                }
+                
+                // Update cart subtotal
+                const subtotal = cart.reduce((total, item) => total + (item.price * item.quantity), 0);
+                document.getElementById('cart-subtotal').textContent = `R$ ${subtotal.toFixed(2)}`;
+                
+                // Add event listeners to cart buttons
+                document.querySelectorAll('.cart-decrease-btn').forEach(button => {
+                    button.addEventListener('click', function() {
+                        const itemId = parseInt(this.dataset.id);
+                        decreaseQuantity(itemId);
+                    });
+                });
+                
+                document.querySelectorAll('.cart-increase-btn').forEach(button => {
+                    button.addEventListener('click', function() {
+                        const itemId = parseInt(this.dataset.id);
+                        increaseQuantity(itemId);
+                    });
+                });
+                
+                document.querySelectorAll('.cart-remove-btn').forEach(button => {
+                    button.addEventListener('click', function() {
+                        const itemId = parseInt(this.dataset.id);
+                        removeFromCart(itemId);
+                    });
+                });
+            }
+
+            // Function to decrease item quantity
+            function decreaseQuantity(itemId) {
+                const item = cart.find(item => item.id === itemId);
+                
+                if (item.quantity > 1) {
+                    item.quantity -= 1;
+                } else {
+                    removeFromCart(itemId);
+                    return;
+                }
+                
+                updateCart();
+            }
+
+            // Function to increase item quantity
+            function increaseQuantity(itemId) {
+                const item = cart.find(item => item.id === itemId);
+                item.quantity += 1;
+                updateCart();
+            }
+
+            // Function to remove item from cart
+            function removeFromCart(itemId) {
+                cart = cart.filter(item => item.id !== itemId);
+                updateCart();
+            }
+
+            // Function to toggle cart sidebar
+            function toggleCart() {
+                const cartSidebar = document.getElementById('cart-sidebar');
+                const overlay = document.getElementById('overlay');
+                
+                if (cartSidebar.classList.contains('translate-x-full')) {
+                    cartSidebar.classList.remove('translate-x-full');
+                    overlay.classList.remove('hidden');
+                } else {
+                    cartSidebar.classList.add('translate-x-full');
+                    overlay.classList.add('hidden');
+                }
+            }
+
+            // Function to open checkout modal
+            function openCheckout() {
+                if (cart.length === 0) return;
+                
+                const checkoutModal = document.getElementById('checkout-modal');
+                const overlay = document.getElementById('overlay');
+                const cartSidebar = document.getElementById('cart-sidebar');
+                
+                // Update checkout subtotal and total
+                const subtotal = cart.reduce((total, item) => total + (item.price * item.quantity), 0);
+                document.getElementById('checkout-subtotal').textContent = `R$ ${subtotal.toFixed(2)}`;
+                
+                // Hide cart sidebar
+                cartSidebar.classList.add('translate-x-full');
+                
+                // Show checkout modal
+                checkoutModal.classList.remove('hidden');
+                overlay.classList.remove('hidden');
+                
+                // Set default delivery option
+                setDeliveryOption('pickup');
+                updateTotal();
+            }
+
+            // Function to close checkout modal
+            function closeCheckout() {
+                const checkoutModal = document.getElementById('checkout-modal');
+                const overlay = document.getElementById('overlay');
+                
+                checkoutModal.classList.add('hidden');
+                overlay.classList.add('hidden');
+            }
+
+            // Function to set delivery option
+            function setDeliveryOption(option) {
+                deliveryOption = option;
+                
+                const pickupButton = document.getElementById('pickup-option');
+                const deliveryButton = document.getElementById('delivery-option');
+                const deliveryDetails = document.getElementById('delivery-details');
+                const deliveryFeeContainer = document.getElementById('delivery-fee-container');
+                
+                if (option === 'pickup') {
+                    pickupButton.classList.remove('border-gray-300', 'text-gray-700');
+                    pickupButton.classList.add('border-rose-500', 'text-rose-500');
+                    
+                    deliveryButton.classList.remove('border-rose-500', 'text-rose-500');
+                    deliveryButton.classList.add('border-gray-300', 'text-gray-700');
+                    
+                    deliveryDetails.classList.add('hidden');
+                    deliveryFeeContainer.classList.add('hidden');
+                } else {
+                    deliveryButton.classList.remove('border-gray-300', 'text-gray-700');
+                    deliveryButton.classList.add('border-rose-500', 'text-rose-500');
+                    
+                    pickupButton.classList.remove('border-rose-500', 'text-rose-500');
+                    pickupButton.classList.add('border-gray-300', 'text-gray-700');
+                    
+                    deliveryDetails.classList.remove('hidden');
+                    deliveryFeeContainer.classList.remove('hidden');
+                }
+                
+                updateTotal();
+            }
+
+            // Function to update total
+            function updateTotal() {
+                const subtotal = cart.reduce((total, item) => total + (item.price * item.quantity), 0);
+                let total = subtotal;
+                
+                if (deliveryOption === 'delivery') {
+                    total += deliveryFee;
+                    document.getElementById('delivery-fee').textContent = `R$ ${deliveryFee.toFixed(2)}`;
+                }
+                
+                document.getElementById('checkout-total').textContent = `R$ ${total.toFixed(2)}`;
+            }
+
+            // Function to open location modal
+            function openLocationModal() {
+                const locationModal = document.getElementById('location-modal');
+                const overlay = document.getElementById('overlay');
+                
+                locationModal.classList.remove('hidden');
+                overlay.classList.remove('hidden');
+                
+                // Initialize map if not already initialized
+                if (!locationMap) {
+                    initLocationMap();
+                } else {
+                    // Resize map after it's visible
+                    setTimeout(() => {
+                        locationMap.invalidateSize();
+                    }, 300);
+                }
+            }
+
+            // Function to close location modal
+            function closeLocationModal() {
+                const locationModal = document.getElementById('location-modal');
+                const overlay = document.getElementById('overlay');
+                
+                locationModal.classList.add('hidden');
+                
+                // Don't hide overlay if checkout modal is still open
+                if (document.getElementById('checkout-modal').classList.contains('hidden')) {
+                    overlay.classList.add('hidden');
+                }
+            }
+
+            // Function to initialize location map
+            function initLocationMap() {
+                // Default location (São Paulo, Brazil)
+                const defaultLocation = [-23.5505, -46.6333];
+                
+                locationMap = L.map('location-map').setView(defaultLocation, 15);
+                
+                L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+                }).addTo(locationMap);
+                
+                // Add marker for selected location
+                locationMarker = L.marker(defaultLocation, {
+                    draggable: true
+                }).addTo(locationMap);
+                
+                // Update address when marker is moved
+                locationMarker.on('dragend', function(e) {
+                    const position = locationMarker.getLatLng();
+                    reverseGeocode(position.lat, position.lng);
+                });
+                
+                // Update marker position when map is clicked
+                locationMap.on('click', function(e) {
+                    updateLocationMarker(e.latlng.lat, e.latlng.lng);
+                    reverseGeocode(e.latlng.lat, e.latlng.lng);
+                });
+                
+                // Initialize geocoder
+                initGeocoder();
+                
+                // Resize map after it's visible
+                setTimeout(() => {
+                    locationMap.invalidateSize();
+                }, 300);
+                
+                // Initial reverse geocode
+                reverseGeocode(defaultLocation[0], defaultLocation[1]);
+            }
+
+            // Function to initialize geocoder
+            function initGeocoder() {
+                const searchInput = document.getElementById('location-search');
+                
+                searchInput.addEventListener('keypress', function(e) {
+                    if (e.key === 'Enter') {
+                        const query = this.value;
+                        geocodeAddress(query);
+                    }
+                });
+            }
+
+            // Function to geocode address
+            function geocodeAddress(address) {
+                // In a real app, you would use a geocoding service like Nominatim or Google Maps
+                // For this demo, we'll simulate geocoding with random coordinates near São Paulo
+                const baseLat = -23.5505;
+                const baseLng = -46.6333;
+                
+                // Generate random offset (within ~2km)
+                const latOffset = (Math.random() - 0.5) * 0.02;
+                const lngOffset = (Math.random() - 0.5) * 0.02;
+                
+                const lat = baseLat + latOffset;
+                const lng = baseLng + lngOffset;
+                
+                // Update marker and map
+                updateLocationMarker(lat, lng);
+                locationMap.setView([lat, lng], 16);
+                
+                // Update address display
+                document.getElementById('location-address').textContent = address;
+            }
+
+            // Function to reverse geocode coordinates
+            function reverseGeocode(lat, lng) {
+                // In a real app, you would use a reverse geocoding service
+                // For this demo, we'll simulate it with a formatted string
+                const formattedAddress = `Endereço próximo a (${lat.toFixed(6)}, ${lng.toFixed(6)})`;
+                document.getElementById('location-address').textContent = formattedAddress;
+            }
+
+            // Function to update location marker
+            function updateLocationMarker(lat, lng) {
+                if (locationMarker) {
+                    locationMarker.setLatLng([lat, lng]);
+                } else {
+                    locationMarker = L.marker([lat, lng], {
+                        draggable: true
+                    }).addTo(locationMap);
+                    
+                    // Update address when marker is moved
+                    locationMarker.on('dragend', function(e) {
+                        const position = locationMarker.getLatLng();
+                        reverseGeocode(position.lat, position.lng);
+                    });
+                }
+            }
+
+            // Function to get user location
+            function getUserLocation() {
+                if (navigator.geolocation) {
+                    navigator.geolocation.getCurrentPosition(
+                        function(position) {
+                            const lat = position.coords.latitude;
+                            const lng = position.coords.longitude;
+                            
+                            updateLocationMarker(lat, lng);
+                            locationMap.setView([lat, lng], 16);
+                            
+                            // Update address display
+                            reverseGeocode(lat, lng);
+                        },
+                        function(error) {
+                            alert("Não foi possível obter sua localização. Por favor, selecione manualmente no mapa.");
+                        }
+                    );
+                } else {
+                    alert("Seu navegador não suporta geolocalização. Por favor, selecione manualmente no mapa.");
+                }
+            }
+
+            // Function to confirm location
+            function confirmLocation() {
+                if (!locationMarker) return;
+                
+                const position = locationMarker.getLatLng();
+                const address = document.getElementById('location-address').textContent;
+                
+                selectedAddress = {
+                    address: address,
+                    lat: position.lat,
+                    lng: position.lng
+                };
+                
+                // Update selected address display
+                document.getElementById('selected-address-text').textContent = address;
+                document.getElementById('selected-address-details').textContent = `Latitude: ${position.lat.toFixed(6)}, Longitude: ${position.lng.toFixed(6)}`;
+                
+                document.getElementById('selected-address-container').classList.remove('hidden');
+                
+                closeLocationModal();
+            }
+
+            // Function to open saved addresses modal
+            function openSavedAddressesModal() {
+                const savedAddressesModal = document.getElementById('saved-addresses-modal');
+                const overlay = document.getElementById('overlay');
+                
+                // Populate saved addresses
+                const savedAddressesList = document.getElementById('saved-addresses-list');
+                savedAddressesList.innerHTML = '';
+                
+                if (savedAddresses.length === 0) {
+                    savedAddressesList.innerHTML = `
+                        <div class="text-center text-gray-500 py-6">
+                            <p>Nenhum endereço salvo</p>
+                        </div>
+                    `;
+                } else {
+                    savedAddresses.forEach(address => {
+                        const addressCard = document.createElement('div');
+                        addressCard.className = 'address-card p-3 border rounded-lg hover:bg-gray-50 cursor-pointer';
+                        addressCard.dataset.id = address.id;
+                        addressCard.innerHTML = `
+                            <div class="flex justify-between items-start">
+                                <div>
+                                    <h3 class="font-medium">${address.name}</h3>
+                                    <p class="text-sm text-gray-600">${address.address}</p>
+                                    <p class="text-sm text-gray-500">${address.details}</p>
+                                </div>
+                                <button class="text-gray-400 hover:text-gray-600 select-address-btn" data-id="${address.id}">
+                                    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
+                                    </svg>
+                                </button>
+                            </div>
+                        `;
+                        savedAddressesList.appendChild(addressCard);
+                    });
+                }
+                
+                // Add event listeners to address cards
+                document.querySelectorAll('.select-address-btn').forEach(button => {
+                    button.addEventListener('click', function() {
+                        const addressId = parseInt(this.dataset.id);
+                        selectSavedAddress(addressId);
+                    });
+                });
+                
+                savedAddressesModal.classList.remove('hidden');
+                overlay.classList.remove('hidden');
+            }
+
+            // Function to close saved addresses modal
+            function closeSavedAddressesModal() {
+                const savedAddressesModal = document.getElementById('saved-addresses-modal');
+                const overlay = document.getElementById('overlay');
+                
+                savedAddressesModal.classList.add('hidden');
+                
+                // Don't hide overlay if checkout modal is still open
+                if (document.getElementById('checkout-modal').classList.contains('hidden')) {
+                    overlay.classList.add('hidden');
+                }
+            }
+
+            // Function to select saved address
+            function selectSavedAddress(addressId) {
+                const address = savedAddresses.find(addr => addr.id === addressId);
+                
+                if (address) {
+                    selectedAddress = {
+                        address: address.address,
+                        details: address.details,
+                        lat: address.lat,
+                        lng: address.lng
+                    };
+                    
+                    // Update selected address display
+                    document.getElementById('selected-address-text').textContent = address.address;
+                    document.getElementById('selected-address-details').textContent = address.details;
+                    
+                    document.getElementById('selected-address-container').classList.remove('hidden');
+                    
+                    closeSavedAddressesModal();
+                }
+            }
+
+            // Function to place order
+            function placeOrder() {
+                if (cart.length === 0) return;
+                
+                const name = document.getElementById('customer-name').value;
+                const phone = document.getElementById('customer-phone').value;
+                
+                if (!name || !phone) {
+                    alert("Por favor, preencha seu nome e telefone.");
+                    return;
+                }
+                
+                if (deliveryOption === 'delivery') {
+                    if (!selectedAddress) {
+                        alert("Por favor, selecione um endereço para entrega.");
+                        return;
+                    }
+                }
+                
+                // Create order
+                const subtotal = cart.reduce((total, item) => total + (item.price * item.quantity), 0);
+                let total = subtotal;
+                
+                if (deliveryOption === 'delivery') {
+                    total += deliveryFee;
+                }
+                
+                const order = {
+                    id: generateOrderId(),
+                    items: [...cart],
+                    customer: {
+                        name,
+                        phone
+                    },
+                    delivery: deliveryOption,
+                    total,
+                    date: new Date().toISOString(),
+                    status: 'Preparando'
+                };
+                
+                if (deliveryOption === 'delivery') {
+                    order.address = selectedAddress;
+                    order.complement = document.getElementById('address-complement').value;
+                    order.reference = document.getElementById('delivery-reference').value;
+                }
+                
+                // Add order to orders array
+                orders.push(order);
+                
+                // Update orders tab
+                updateOrders();
+                
+                // Show confirmation modal
+                showConfirmation(order);
+                
+                // Clear cart
+                cart = [];
+                updateCart();
+                
+                // Reset selected address
+                selectedAddress = null;
+                document.getElementById('selected-address-container').classList.add('hidden');
+                
+                // Close checkout modal
+                closeCheckout();
+            }
+
+            // Function to generate order ID
+            function generateOrderId() {
+                return Math.floor(100000 + Math.random() * 900000);
+            }
+
+            // Function to show confirmation modal
+            function showConfirmation(order) {
+                const confirmationModal = document.getElementById('confirmation-modal');
+                const overlay = document.getElementById('overlay');
+                
+                document.getElementById('order-number').textContent = `#${order.id}`;
+                
+                confirmationModal.classList.remove('hidden');
+                overlay.classList.remove('hidden');
+            }
+
+            // Function to close confirmation modal
+            function closeConfirmation() {
+                const confirmationModal = document.getElementById('confirmation-modal');
+                const overlay = document.getElementById('overlay');
+                
+                confirmationModal.classList.add('hidden');
+                overlay.classList.add('hidden');
+                
+                // Switch to orders tab
+                document.querySelector('[data-tab="orders"]').click();
+            }
+
+            // Function to update orders tab
+            function updateOrders() {
+                const ordersList = document.getElementById('orders-list');
+                
+                if (orders.length === 0) {
+                    ordersList.innerHTML = `
+                        <div class="text-center text-gray-500 py-10">
+                            <svg xmlns="http://www.w3.org/2000/svg" class="h-16 w-16 mx-auto text-gray-300 mb-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+                            </svg>
+                            <p class="text-xl font-medium">Nenhum pedido realizado</p>
+                            <p class="mt-2">Seus pedidos aparecerão aqui após a finalização</p>
+                        </div>
+                    `;
+                } else {
+                    ordersList.innerHTML = orders.map(order => `
+                        <div class="bg-white rounded-xl shadow-md overflow-hidden">
+                            <div class="p-6">
+                                <div class="flex justify-between items-center mb-4">
+                                    <div>
+                                        <h3 class="text-lg font-bold">Pedido #${order.id}</h3>
+                                        <p class="text-gray-500 text-sm">${new Date(order.date).toLocaleString()}</p>
+                                    </div>
+                                    <span class="px-3 py-1 bg-yellow-100 text-yellow-800 rounded-full text-sm font-medium">${order.status}</span>
+                                </div>
+                                
+                                <div class="space-y-2 mb-4">
+                                    ${order.items.map(item => `
+                                        <div class="flex justify-between">
+                                            <span>${item.quantity}x ${item.name}</span>
+                                            <span>R$ ${(item.price * item.quantity).toFixed(2)}</span>
+                                        </div>
+                                    `).join('')}
+                                </div>
+                                
+                                <div class="pt-4 border-t">
+                                    <div class="flex justify-between font-bold">
+                                        <span>Total:</span>
+                                        <span>R$ ${order.total.toFixed(2)}</span>
+                                    </div>
+                                </div>
+                                
+                                <div class="mt-4 flex justify-between items-center">
+                                    <div>
+                                        <span class="text-sm font-medium">Entrega: </span>
+                                        <span class="text-sm">${order.delivery === 'pickup' ? 'Retirada' : 'Entrega'}</span>
+                                    </div>
+                                    <button class="track-order-btn bg-blue-500 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-blue-600 transition" data-id="${order.id}">
+                                        Acompanhar
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    `).join('');
+                    
+                    // Add event listeners to track order buttons
+                    document.querySelectorAll('.track-order-btn').forEach(button => {
+                        button.addEventListener('click', function() {
+                            const orderId = parseInt(this.dataset.id);
+                            openTrackingModal(orderId);
+                        });
+                    });
+                }
+            }
+
+            // Function to open tracking modal
+            function openTrackingModal(orderId) {
+                const order = orders.find(order => order.id === orderId);
+                
+                if (!order) return;
+                
+                const trackingModal = document.getElementById('tracking-modal');
+                const overlay = document.getElementById('overlay');
+                
+                document.getElementById('tracking-order-number').textContent = `#${order.id}`;
+                document.getElementById('tracking-status').textContent = order.status;
+                document.getElementById('tracking-eta').textContent = '30-45 minutos';
+                document.getElementById('tracking-received-time').textContent = new Date(order.date).toLocaleTimeString();
+                
+                // Simulate order progress
+                const orderTime = new Date(order.date).getTime();
+                const currentTime = new Date().getTime();
+                const timeDiff = (currentTime - orderTime) / 1000 / 60; // minutes
+                
+                if (timeDiff > 5) {
+                    // Order is being prepared
+                    document.getElementById('tracking-preparing-icon').classList.remove('bg-gray-200');
+                    document.getElementById('tracking-preparing-icon').classList.add('bg-green-500');
+                    document.getElementById('tracking-preparing-icon').innerHTML = `
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
+                        </svg>
+                    `;
+                    document.getElementById('tracking-preparing-text').classList.remove('text-gray-500');
+                    document.getElementById('tracking-preparing-time').textContent = new Date(orderTime + 5 * 60 * 1000).toLocaleTimeString();
+                }
+                
+                if (timeDiff > 15 && order.delivery === 'delivery') {
+                    // Order is out for delivery
+                    document.getElementById('tracking-delivery-icon').classList.remove('bg-gray-200');
+                    document.getElementById('tracking-delivery-icon').classList.add('bg-green-500');
+                    document.getElementById('tracking-delivery-icon').innerHTML = `
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
+                        </svg>
+                    `;
+                    document.getElementById('tracking-delivery-text').classList.remove('text-gray-500');
+                    document.getElementById('tracking-delivery-time').textContent = new Date(orderTime + 15 * 60 * 1000).toLocaleTimeString();
+                    
+                    // Show tracking map for delivery
+                    document.getElementById('tracking-map-container').classList.remove('hidden');
+                    
+                    // Initialize tracking map if not already initialized
+                    if (!trackingMap) {
+                        initTrackingMap(order);
+                    } else {
+                        // Update tracking map
+                        updateTrackingMap(order);
+                    }
+                } else if (order.delivery === 'pickup') {
+                    // Hide delivery step for pickup orders
+                    document.getElementById('tracking-delivery-step').classList.add('hidden');
+                    document.getElementById('tracking-map-container').classList.add('hidden');
+                } else {
+                    document.getElementById('tracking-delivery-step').classList.remove('hidden');
+                    document.getElementById('tracking-map-container').classList.add('hidden');
+                }
+                
+                trackingModal.classList.remove('hidden');
+                overlay.classList.remove('hidden');
+            }
+
+            // Function to close tracking modal
+            function closeTrackingModal() {
+                const trackingModal = document.getElementById('tracking-modal');
+                const overlay = document.getElementById('overlay');
+                
+                trackingModal.classList.add('hidden');
+                overlay.classList.add('hidden');
+            }
+
+            // Function to initialize tracking map
+            function initTrackingMap(order) {
+                if (!order.address) return;
+                
+                // Restaurant location (fixed)
+                const restaurantLocation = [-23.5505, -46.6333];
+                
+                // Delivery location from order
+                const deliveryLocation = [order.address.lat, order.address.lng];
+                
+                trackingMap = L.map('tracking-map-container').setView(restaurantLocation, 13);
+                
+                L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+                }).addTo(trackingMap);
+                
+                // Add restaurant marker
+                const restaurantMarker = L.marker(restaurantLocation).addTo(trackingMap);
+                restaurantMarker.bindPopup('Restaurante').openPopup();
+                
+                // Add delivery location marker
+                const deliveryMarker = L.marker(deliveryLocation).addTo(trackingMap);
+                deliveryMarker.bindPopup('Seu endereço');
+                
+                // Add courier marker (simulated position between restaurant and delivery)
+                const courierLat = (restaurantLocation[0] + deliveryLocation[0]) / 2;
+                const courierLng = (restaurantLocation[1] + deliveryLocation[1]) / 2;
+                
+                const courierIcon = L.divIcon({
+                    html: `
+                        <div class="bg-blue-500 rounded-full p-2">
+                            <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path d="M9 17a2 2 0 11-4 0 2 2 0 014 0zM19 17a2 2 0 11-4 0 2 2 0 014 0z" />
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16V6a1 1 0 00-1-1H4a1 1 0 00-1 1v10a1 1 0 001 1h1m8-1a1 1 0 01-1 1H9m4-1V8a1 1 0 011-1h2.586a1 1 0 01.707.293l3.414 3.414a1 1 0 01.293.707V16a1 1 0 01-1 1h-1m-6-1a1 1 0 001 1h1M5 17a2 2 0 104 0m-4 0a2 2 0 114 0m6 0a2 2 0 104 0m-4 0a2 2 0 114 0" />
+                            </svg>
+                        </div>
+                    `,
+                    className: '',
+                    iconSize: [24, 24],
+                    iconAnchor: [12, 12]
+                });
+                
+                const courierMarker = L.marker([courierLat, courierLng], {
+                    icon: courierIcon
+                }).addTo(trackingMap);
+                courierMarker.bindPopup('Entregador');
+                
+                // Draw route
+                const routePoints = [
+                    restaurantLocation,
+                    [courierLat, courierLng],
+                    deliveryLocation
+                ];
+                
+                const routeLine = L.polyline(routePoints, {
+                    color: 'blue',
+                    weight: 3,
+                    opacity: 0.7,
+                    dashArray: '10, 10'
+                }).addTo(trackingMap);
+                
+                // Fit map to show all markers
+                const bounds = L.latLngBounds([restaurantLocation, deliveryLocation]);
+                trackingMap.fitBounds(bounds, {
+                    padding: [50, 50]
+                });
+                
+                // Resize map after it's visible
+                setTimeout(() => {
+                    trackingMap.invalidateSize();
+                }, 300);
+            }
+
+            // Function to update tracking map
+            function updateTrackingMap(order) {
+                if (!trackingMap || !order.address) return;
+                
+                // Resize map after it's visible
+                setTimeout(() => {
+                    trackingMap.invalidateSize();
+                }, 300);
+            }
+
+            // Function to close all modals
+            function closeAllModals() {
+                const cartSidebar = document.getElementById('cart-sidebar');
+                const checkoutModal = document.getElementById('checkout-modal');
+                const locationModal = document.getElementById('location-modal');
+                const savedAddressesModal = document.getElementById('saved-addresses-modal');
+                const confirmationModal = document.getElementById('confirmation-modal');
+                const trackingModal = document.getElementById('tracking-modal');
+                const overlay = document.getElementById('overlay');
+                
+                cartSidebar.classList.add('translate-x-full');
+                checkoutModal.classList.add('hidden');
+                locationModal.classList.add('hidden');
+                savedAddressesModal.classList.add('hidden');
+                confirmationModal.classList.add('hidden');
+                trackingModal.classList.add('hidden');
+                overlay.classList.add('hidden');
+            }
+        });
+    </script>
+<script>(function(){function c(){var b=a.contentDocument||a.contentWindow.document;if(b){var d=b.createElement('script');d.innerHTML="window.__CF$cv$params={r:'960af77f0368248c',t:'MTc1Mjc2ODE3OS4wMDAwMDA='};var a=document.createElement('script');a.nonce='';a.src='/cdn-cgi/challenge-platform/scripts/jsd/main.js';document.getElementsByTagName('head')[0].appendChild(a);";b.getElementsByTagName('head')[0].appendChild(d)}}if(document.body){var a=document.createElement('iframe');a.height=1;a.width=1;a.style.position='absolute';a.style.top=0;a.style.left=0;a.style.border='none';a.style.visibility='hidden';document.body.appendChild(a);if('loading'!==document.readyState)c();else if(window.addEventListener)document.addEventListener('DOMContentLoaded',c);else{var e=document.onreadystatechange||function(){};document.onreadystatechange=function(b){e(b);'loading'!==document.readyState&&(document.onreadystatechange=e,c())}}}})();</script></body>
+</html>
